@@ -23,6 +23,77 @@
 
 package main
 
-func main()  {
-	
+import (
+	"fmt"
+	"math/rand"
+	"sync"
+	"time"
+)
+
+var (
+	seatingCapacity = 5
+	noBarbers       = 1
+	hairCutTime     = 100
+	shopOpenTime    = 10 * time.Second
+	arrivalInterval = 200
+)
+
+func main() {
+
+	rand.Seed(time.Now().Unix())
+
+	clientChannel := make(chan int, seatingCapacity)
+	finishedHairCut := make(chan bool)
+
+	// Print the program starting
+
+	fmt.Println("------------------ Program Starting ------------------")
+
+	allenshop := BarberShop{
+		SeatingArea:         seatingCapacity,
+		Barbers:             noBarbers,
+		BarbingTime:         time.Duration(hairCutTime * int(time.Millisecond)),
+		ClientsChan:         clientChannel,
+		ShopOpen:            false,
+		finishedHairCutchan: finishedHairCut,
+		cleanShop:           false,
+		cleanShopChan:       sync.Mutex{},
+	}
+
+	// Simulate a day in the life of a barbing shop
+	allenshop.BarbHair(1)
+	allenshop.BarbHair(2)
+
+	// We need a channel for when the shop is about closing
+
+	closingChannel := make(chan bool)
+	shopCloseChannel := make(chan bool)
+
+	go func() {
+		<-time.After(shopOpenTime)
+		<-closingChannel
+		allenshop.closingSoon()
+		<-shopCloseChannel
+		close(shopCloseChannel)
+
+	}()
+
+	go func() {
+		var i int
+		for {
+			randomization := rand.Int() * (2 % arrivalInterval)
+			select {
+			case <-closingChannel:
+				return
+			case <-time.After(time.Millisecond * time.Duration(randomization)):
+				allenshop.sendClient(i)
+				i++
+			}
+		}
+	}()
+
+	<-shopCloseChannel
+
+	fmt.Println("Goodbye")
+
 }
