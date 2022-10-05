@@ -5,95 +5,85 @@
 // waiting room for new clients, and if one or more is there, a haircut takes place. Otherwise, the barber goes to
 // sleep until a new client arrives. So the rules are as follows:
 //
-//		- if there are no customers, the barber falls asleep in the chair
-//		- a customer must wake the barber if he is asleep
-//		- if a customer arrives while the barber is working, the customer leaves if all chairs are occupied and
-//		  sits in an empty chair if it's available
-//		- when the barber finishes a haircut, he inspects the waiting room to see if there are any waiting customers
-//		  and falls asleep if there are none
-// 		- shop can stop accepting new clients at closing time, but the barbers cannot leave until the waiting room is
-//	      empty
-//		- after the shop is closed and there are no clients left in the waiting area, the barber
-//		  goes home
+//   - if there are no customers, the barber falls asleep in the chair
+//   - a customer must wake the barber if he is asleep
+//   - if a customer arrives while the barber is working, the customer leaves if all chairs are occupied and
+//     sits in an empty chair if it's available
+//   - when the barber finishes a haircut, he inspects the waiting room to see if there are any waiting customers
+//     and falls asleep if there are none
+//   - shop can stop accepting new clients at closing time, but the barbers cannot leave until the waiting room is
+//     empty
+//   - after the shop is closed and there are no clients left in the waiting area, the barber
+//     goes home
 //
 // The Sleeping Barber was originally proposed in 1965 by computer science pioneer Edsger Dijkstra.
 //
 // The point of this problem, and its solution, was to make it clear that in a lot of cases, the use of
 // semaphores (mutexes) is not needed.
-
 package main
 
 import (
 	"fmt"
 	"math/rand"
-	"sync"
 	"time"
 )
 
 var (
-	seatingCapacity = 5
-	noBarbers       = 1
-	hairCutTime     = 100
-	shopOpenTime    = 10 * time.Second
+	waitingRoom     = 4
 	arrivalInterval = 200
+	haircutDuration = 1000 * time.Millisecond
+	timeOpen        = 5 * time.Second
 )
 
 func main() {
+	// Seed a rondom number
+	rand.Seed(time.Now().UnixNano())
 
-	rand.Seed(time.Now().Unix())
+	// Print welcome message
+	fmt.Println("------------- Program starts -------------")
 
-	clientChannel := make(chan int, seatingCapacity)
-	finishedHairCut := make(chan bool)
+	// Create a chaneel to interface with the shop and barbers
+	clientChannel := make(chan int, waitingRoom)
+	barberCloseChan := make(chan bool)
 
-	// Print the program starting
-
-	fmt.Println("------------------ Program Starting ------------------")
-
+	// Create the shop it self
 	allenshop := BarberShop{
-		SeatingArea:         seatingCapacity,
-		Barbers:             noBarbers,
-		BarbingTime:         time.Duration(hairCutTime * int(time.Millisecond)),
-		ClientsChan:         clientChannel,
-		ShopOpen:            false,
-		finishedHairCutchan: finishedHairCut,
-		cleanShop:           false,
-		cleanShopChan:       sync.Mutex{},
+		SeatingCapacity: waitingRoom,
+		Barbers:         0,
+		HaircutDuration: haircutDuration,
+		Open:            true,
+		ClientChannel:   clientChannel,
+		BarberDoneChan:  barberCloseChan,
 	}
 
-	// Simulate a day in the life of a barbing shop
-	allenshop.BarbHair(1)
-	allenshop.BarbHair(2)
-
-	// We need a channel for when the shop is about closing
+	allenshop.barberArrival(1)
 
 	closingChannel := make(chan bool)
-	shopCloseChannel := make(chan bool)
+	shopClosedChannel := make(chan bool)
 
 	go func() {
-		<-time.After(shopOpenTime)
-		<-closingChannel
+		<-time.After(timeOpen)
+		closingChannel <- true
 		allenshop.closingSoon()
-		<-shopCloseChannel
-		close(shopCloseChannel)
-
+		shopClosedChannel <- true
 	}()
 
+	// Add clients
+	i := 1
 	go func() {
-		var i int
+
 		for {
-			randomization := rand.Int() * (2 % arrivalInterval)
+			// Get random number
+			randomization := rand.Int() % (arrivalInterval * 2)
 			select {
-			case <-closingChannel:
-				return
-			case <-time.After(time.Millisecond * time.Duration(randomization)):
-				allenshop.sendClient(i)
-				i++
+				case <-closingChannel:
+					return
+				case <-time.After(time.Millisecond * time.Duration(randomization)):
+					allenshop.clientArrival(i)
+					i++
 			}
 		}
 	}()
 
-	<-shopCloseChannel
-
-	fmt.Println("Goodbye")
-
+	<-shopClosedChannel
 }
